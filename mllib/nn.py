@@ -171,6 +171,7 @@ class Conv2d(Module):
         ###dX = col2im_indices(dX_col, self._X_shape, self._kernel_size, self._kernel_size, padding=self._padding, stride=self._stride)
         dX = col2im_cython(dX_col, self._X_shape[0], self._X_shape[1], self._X_shape[2], self._X_shape[3], self._kernel_size, self._kernel_size, padding=self._padding, stride=self._stride)
         return dX
+
 class Linear(Module):
     """ Applies a linear transformation to the incoming data: y=Ax+b
     Parameters
