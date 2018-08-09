@@ -1,9 +1,6 @@
 import numpy as np
 
 class CrossEntropyLoss(object):
-    def __init__(self):
-        pass
-    
     def __call__(self, Y, labels):
         loss = 0
         for i, y in enumerate(Y):

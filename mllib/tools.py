@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Mar  1 17:28:07 2017
-
-@author: Thomas PESNEAU
-TOOL FUNCTIONS FOR FEATURE EXTRACTION
-"""
 import numpy as np
 
 def whiten(patches,eps_zca):

@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Feb 17 10:29:39 2017
-
-@author: EmileMathieu
-"""
 import numpy as np
 import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()})
 from .im2col_cyt import col2im_cython, im2col_cython
+
+#################################
+###        BASE MODULE        ###
+#################################
 
 class Module(object):
     """ Base class for neural network's layers
@@ -48,11 +45,72 @@ class Module(object):
         self._bias = optimizer(id(self), 'bias', self._bias, self._grad_bias)
         self._weight = optimizer(id(self), 'weight', self._weight, self._grad_weight)
 
-    def zero_grad(self):
-        """ Reset gradient of the layer's parameters
-        """
-        self._grad_bias = None
-        self._grad_weight = None
+class Sequential(Module):
+    """ Special instance of neural network which can be constructed as a sequence of layers
+    """
+    def __init__(self, *modules):
+        self._modules = list(modules)
+
+    def forward(self, X):
+        for module in self._modules:
+            X = module.forward(X)
+        return X
+
+    def backward(self, output_grad):
+        for module in reversed(self._modules):
+            output_grad = module.backward(output_grad)
+        return output_grad
+
+    def has_parameters(self, module):
+        return True if isinstance(module, (Linear, Conv2d, BatchNorm2d)) else False
+
+    def step(self, optimizer):
+        for module in self._modules:
+            if self.has_parameters(module):
+                module.step(optimizer)
+
+class Flatten(Module):
+    """ Flatten a multi-dimensional tensor to a 1 dimensional vector
+    """
+    def forward(self, X):
+        self._X_shape = X.shape
+        return X.reshape(X.shape[0], -1)
+
+    def backward(self, output_grad):
+        return output_grad.reshape(self._X_shape)
+
+#################################
+###           LAYERS          ###
+#################################
+
+class Linear(Module):
+    """ Applies a linear transformation to the incoming data: y=Ax+b
+    Parameters
+    ----------
+    in_features : int
+        size of each input sample
+    out_features : int
+        size of each output sample
+    Variables
+    ----------
+    weight : array-like, shape = [out_features x in_features]
+        the learnable weights of the module
+    bias : array-like, shape = [out_features]
+        the learnable bias of the module
+    """
+    def __init__(self, in_features, out_features):
+        law_bound = 1/np.sqrt(in_features)
+        self._bias = np.random.uniform(-law_bound,law_bound,size=(out_features)).astype(np.float32)
+        self._weight = np.random.uniform(-law_bound,law_bound,size=(out_features, in_features)).astype(np.float32)
+
+    def forward(self, X):
+        self._last_input = X
+        return np.matmul(X, self._weight.T) + np.tile(self._bias, (X.shape[0],1))
+
+    def backward(self, output_grad):
+        self._grad_bias = np.sum(output_grad,axis=0)
+        self._grad_weight = np.dot(output_grad.T, self._last_input)
+        return np.dot(output_grad, self._weight)
 
 class ReLU(Module):
     """ Applies the rectified linear unit function element-wise ReLu(x) = max(0,x)
@@ -171,37 +229,6 @@ class Conv2d(Module):
         ###dX = col2im_indices(dX_col, self._X_shape, self._kernel_size, self._kernel_size, padding=self._padding, stride=self._stride)
         dX = col2im_cython(dX_col, self._X_shape[0], self._X_shape[1], self._X_shape[2], self._X_shape[3], self._kernel_size, self._kernel_size, padding=self._padding, stride=self._stride)
         return dX
-
-class Linear(Module):
-    """ Applies a linear transformation to the incoming data: y=Ax+b
-    Parameters
-    ----------
-    in_features : int
-        size of each input sample
-    out_features : int
-        size of each output sample
-    Variables
-    ----------
-    weight : array-like, shape = [out_features x in_features]
-        the learnable weights of the module
-    bias : array-like, shape = [out_features]
-        the learnable bias of the module
-    """
-    def __init__(self,in_features, out_features):
-        self._in_features = in_features
-        self._out_features = out_features
-        law_bound = 1/np.sqrt(in_features)
-        self._bias = np.random.uniform(-law_bound,law_bound,size=(out_features)).astype(np.float32)
-        self._weight = np.random.uniform(-law_bound,law_bound,size=(out_features, in_features)).astype(np.float32)
-
-    def forward(self, X):
-        self._last_input = X
-        return np.matmul(X, self._weight.T) + np.tile(self._bias, (X.shape[0],1))
-
-    def backward(self, output_grad):
-        self._grad_bias = np.sum(output_grad,axis=0)
-        self._grad_weight = np.dot(output_grad.T, self._last_input)
-        return np.dot(output_grad, self._weight)
     
 class BatchNorm2d(Module):
     """ Applies Batch Normalization over a 4d input that is seen as a mini-batch of 3d inputs
@@ -258,61 +285,3 @@ class BatchNorm2d(Module):
         self._grad_weight = np.sum((h - mu) * (var + self.eps)**(-1. / 2.) * dy, axis=(0,2,3))
         return (1. / N) * weight_big * (var + self.eps)**(-1. / 2.) * (N * dy - np.sum(dy, axis=0)
             - (h - mu) * (var + self.eps)**(-1.0) * np.sum(dy * (h - mu), axis=0))
-    
-class Flatten(Module):
-    """ Flatten a multi-dimensional tensor to a 1 dimensional vector
-    """
-    def forward(self, X):
-        self._X_shape = X.shape
-        return X.reshape(X.shape[0], -1)
-
-    def backward(self, output_grad):
-        return output_grad.reshape(self._X_shape)
-
-class Sequential(Module):
-    """ Special instance of neural network which can be constructed as a sequence of layers
-    """
-    def __init__(self, *modules):
-        self._modules = list(modules)
-
-    def add_module(self, module):
-        self._modules.append(module)
-
-    def forward(self, X):
-        for module in self._modules:
-            X = module.forward(X)
-        return X
-
-    def backward(self, output_grad):
-        for module in reversed(self._modules):
-            output_grad = module.backward(output_grad)
-        return output_grad
-
-    def has_parameters(self, module):
-        if isinstance(module, Linear) or isinstance(module, Conv2d) or isinstance(module, BatchNorm2d):
-            return True
-        else:
-            return False
-
-    def step(self, optimizer):
-        for module in self._modules:
-            if self.has_parameters(module):
-                module.step(optimizer)
-
-    def zero_grad(self):
-        for module in self._modules:
-            if self.has_parameters(module):
-                module.zero_grad()
-                
-    def zero_momentum(self):
-        for module in self._modules:
-            if isinstance(module, BatchNorm2d):
-                module.zero_momentum()
-
-    def parameters(self):
-        parameters = []
-        for module in self._modules:
-             if self.has_parameters(module):
-                parameters.append(module._weight)
-                parameters.append(module._bias)
-        return parameters

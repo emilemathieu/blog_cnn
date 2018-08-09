@@ -1,13 +1,6 @@
-from .svm import (
-    binary_classification_qp,
-    binary_classification_smo,
-    #multiclass_ova,
-    multiclass_ovo,
-    Kernel
-)
-
 from .optim import (
     SGD,
+    RMSprop,
     Adam
 )
 
@@ -24,12 +17,12 @@ from .loss import (
     CrossEntropyLoss
 )
 
-from .kflearn import (
-    Kmeans,
-    extract_features
-    )
-
 from .tools import (
     whiten,
     standard
+    )
+
+from .mnist import (
+    init,
+    load
     )

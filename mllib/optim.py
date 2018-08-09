@@ -1,47 +1,29 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Feb 19 17:42:31 2017
-
-@author: EmileMathieu
-"""
-
 import numpy as np
 import math
 
 class Optimizer(object):
-    def __init__(self, lambda_reg, batch):
-        self._reset_state()
-        self.lambda_reg = lambda_reg
-        self.batch = batch
-    def __call__(self, layer_id, weight_type, objective, grad):
-        raise NotImplementedError()
-    def zero_grad(self):
-        self._reset_state()
-    def _reset_state(self):
+    def __init__(self):
         self.state = {}
 
+    def __call__(self, layer_id, weight_type, value, grad):
+        raise NotImplementedError()
+
 class SGD(Optimizer):
-    def __init__(self, lr=0.1, momentum=0, lambda_reg=0, batch=16):
-        super().__init__(lambda_reg, batch)
+    def __init__(self, lr=0.1, momentum=0):
+        super().__init__()
         self.lr = lr
         self.momentum = momentum
         
     def get_state(self, key):
-        if self.momentum != 0 and key in self.state:
-            mu = self.state[key]
-        else:
-            mu = 0
-        return mu
+        return self.state[key] if self.momentum != 0 and key in self.state else 0
 
-    def __call__(self, layer_id, weight_type, objective, grad):
-        key = str(layer_id) + weight_type
-        old_v = self.get_state(key)
+    def __call__(self, layer_id, weight_type, value, grad):
+        old_v = self.get_state(str(layer_id) + weight_type)
         new_v = self.lr * grad
 
         new_v += self.momentum * old_v
         self.state[key] = new_v
-        return objective - new_v
+        return value - new_v
 
 class Adam(Optimizer):
     """
@@ -56,8 +38,8 @@ class Adam(Optimizer):
             term for numerical stability
 
     """
-    def __init__(self, lr=0.001, betas=[0.9, 0.999], eps=10e-8, lambda_reg=0, batch=16):
-        super().__init__(lambda_reg, batch)
+    def __init__(self, lr=0.001, betas=[0.9, 0.999], eps=10e-8):
+        super().__init__()
         self.lr = lr
         self.betas = betas
         self.eps = eps
@@ -71,14 +53,14 @@ class Adam(Optimizer):
             step = 0
         return m, v, step
 
-    def __call__(self, layer_id, weight_type, objective, grad):
+    def __call__(self, layer_id, weight_type, value, grad):
         """
         Performs a step of Gradient descent with ADAM optimization
         -------------
         Pameters:
             gradient (array)
               Gradient of the function to optimize
-            objective (array):
+            value (array):
               Initial point
         """
         key = str(layer_id) + weight_type
@@ -96,13 +78,12 @@ class Adam(Optimizer):
         bias_correction1 = 1 - beta1 ** step
         bias_correction2 = 1 - beta2 ** step
         step_size = self.lr * math.sqrt(bias_correction2) / bias_correction1
-        ## Define new step
-        objective = (1 - self.lambda_reg*step_size/self.batch) * objective - step_size / (np.sqrt(v_unbiased) + self.eps) * m_unbiased
-        return objective
+
+        return value - step_size / (np.sqrt(v_unbiased) + self.eps) * m_unbiased
 
 class RMSprop(Optimizer):
-    def __init__(self, lr=0.01, alpha=0.99, eps=10e-8, lambda_reg=0, batch=16):
-        super().__init__(lambda_reg, batch)
+    def __init__(self, lr=0.01, alpha=0.99, eps=10e-8):
+        super().__init__()
         self.lr = lr
         self.alpha = alpha
         self.eps = eps
@@ -115,7 +96,7 @@ class RMSprop(Optimizer):
             step = 0
         return square_avg, step
 
-    def __call__(self, layer_id, weight_type, objective, grad):
+    def __call__(self, layer_id, weight_type, value, grad):
         key = str(layer_id) + weight_type
         square_avg, step = self.get_state(key, grad.shape)
         step = step + 1
@@ -123,4 +104,4 @@ class RMSprop(Optimizer):
         self.state[key] = square_avg, step
         avg = np.sqrt(square_avg + self.eps)
 
-        return (1 - self.lambda_reg*self.lr/self.batch) * objective - self.lr * grad / avg
+        return value - self.lr * grad / avg
